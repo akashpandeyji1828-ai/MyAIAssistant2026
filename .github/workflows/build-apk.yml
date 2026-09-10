@@ -1,597 +1,620 @@
-name: Build FRIDAY V3 Fixed
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.10.2"
-
-      - name: Create project folders
-        shell: bash
-        run: |
-          mkdir -p app/src/main/java/com/example/friday
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/xml
-
-      - name: Create settings.gradle.kts
-        shell: bash
-        run: |
-          cat > settings.gradle.kts <<'EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-
-          rootProject.name = "FRIDAY"
-          include(":app")
-          EOF
-
-      - name: Create root build.gradle.kts
-        shell: bash
-        run: |
-          cat > build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application") version "8.7.3" apply false
-          }
-          EOF
-
-      - name: Create app build.gradle.kts
-        shell: bash
-        run: |
-          cat > app/build.gradle.kts <<'EOF'
-          plugins {
-              id("com.android.application")
-          }
-
-          android {
-              namespace = "com.example.friday"
-              compileSdk = 35
-
-              defaultConfig {
-                  applicationId = "com.example.friday"
-                  minSdk = 26
-                  targetSdk = 35
-                  versionCode = 6
-                  versionName = "3.1"
-              }
-          }
-          EOF
-
-      - name: Create strings.xml
-        shell: bash
-        run: |
-          cat > app/src/main/res/values/strings.xml <<'EOF'
-          <resources>
-              <string name="app_name">FRIDAY</string>
-              <string name="accessibility_description">FRIDAY user-approved automation service.</string>
-          </resources>
-          EOF
-
-      - name: Create accessibility config
-        shell: bash
-        run: |
-          cat > app/src/main/res/xml/friday_accessibility_config.xml <<'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <accessibility-service
-              xmlns:android="http://schemas.android.com/apk/res/android"
-              android:accessibilityEventTypes="typeAllMask"
-              android:accessibilityFeedbackType="feedbackGeneric"
-              android:accessibilityFlags="flagDefault"
-              android:canRetrieveWindowContent="true"
-              android:description="@string/accessibility_description"
-              android:notificationTimeout="100" />
-          EOF
-
-      - name: Create AndroidManifest.xml
-        shell: bash
-        run: |
-          cat > app/src/main/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
-
-              <application
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:label="@string/app_name"
-                  android:allowBackup="false"
-                  android:supportsRtl="true">
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true">
-
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-
-                  </activity>
-
-                  <service
-                      android:name=".FridayVoiceService"
-                      android:foregroundServiceType="microphone"
-                      android:exported="false"/>
-
-                  <service
-                      android:name=".FridayAccessibilityService"
-                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-                      android:exported="false">
-
-                      <intent-filter>
-                          <action android:name="android.accessibilityservice.AccessibilityService"/>
-                      </intent-filter>
-
-                      <meta-data
-                          android:name="android.accessibilityservice"
-                          android:resource="@xml/friday_accessibility_config"/>
-
-                  </service>
-
-              </application>
-
-          </manifest>
-          EOF
-
-      - name: Create MainActivity.java
-        shell: bash
-        run: |
-          cat > app/src/main/java/com/example/friday/MainActivity.java <<'EOF'
-          package com.example.friday;
-
-          import android.Manifest;
-          import android.app.Activity;
-          import android.content.Intent;
-          import android.content.pm.PackageManager;
-          import android.net.Uri;
-          import android.os.Bundle;
-          import android.provider.Settings;
-          import android.speech.RecognizerIntent;
-          import android.speech.tts.TextToSpeech;
-          import android.view.Gravity;
-          import android.widget.*;
-
-          import java.util.ArrayList;
-          import java.util.Locale;
-
-          public class MainActivity extends Activity {
-
-              private TextToSpeech tts;
-              private TextView status;
-
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-
-                  if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                      checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                      != PackageManager.PERMISSION_GRANTED) {
-
-                      requestPermissions(
-                          new String[]{Manifest.permission.RECORD_AUDIO},
-                          10
-                      );
-                  }
-
-                  LinearLayout root = new LinearLayout(this);
-                  root.setOrientation(LinearLayout.VERTICAL);
-                  root.setGravity(Gravity.CENTER);
-                  root.setPadding(32, 32, 32, 32);
-
-                  TextView title = new TextView(this);
-                  title.setText("FRIDAY");
-                  title.setTextSize(38);
-                  title.setGravity(Gravity.CENTER);
-
-                  TextView version = new TextView(this);
-                  version.setText("V3.1 • AI ASSISTANT");
-                  version.setTextSize(18);
-                  version.setGravity(Gravity.CENTER);
-
-                  TextView core = new TextView(this);
-                  core.setText("◉\n\nAI CORE\n\nVOICE + AUTOMATION");
-                  core.setTextSize(22);
-                  core.setGravity(Gravity.CENTER);
-
-                  status = new TextView(this);
-                  status.setText("SYSTEM READY");
-                  status.setTextSize(18);
-                  status.setGravity(Gravity.CENTER);
-                  status.setPadding(0, 20, 0, 20);
-
-                  Button speak = new Button(this);
-                  speak.setText("🎙 SPEAK TO FRIDAY");
-
-                  Button service = new Button(this);
-                  service.setText("ACTIVATE VOICE SERVICE");
-
-                  Button accessibility = new Button(this);
-                  accessibility.setText("ENABLE AUTOMATION");
-
-                  root.addView(title);
-                  root.addView(version);
-                  root.addView(core);
-                  root.addView(status);
-                  root.addView(speak);
-                  root.addView(service);
-                  root.addView(accessibility);
-
-                  setContentView(root);
-
-                  tts = new TextToSpeech(this, result -> {
-                      if (result == TextToSpeech.SUCCESS) {
-                          tts.setLanguage(new Locale("hi", "IN"));
-                      }
-                  });
-
-                  speak.setOnClickListener(v -> listen());
-
-                  service.setOnClickListener(v -> {
-
-                      Intent intent =
-                          new Intent(this, FridayVoiceService.class);
-
-                      if (android.os.Build.VERSION.SDK_INT >= 26) {
-                          startForegroundService(intent);
-                      } else {
-                          startService(intent);
-                      }
-
-                      status.setText("VOICE SERVICE ACTIVE");
-                      say("FRIDAY voice service is active.");
-                  });
-
-                  accessibility.setOnClickListener(v -> {
-
-                      try {
-                          startActivity(
-                              new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                          );
-
-                          say("Please enable FRIDAY automation service.");
-
-                      } catch (Exception e) {
-                          say("Accessibility settings could not be opened.");
-                      }
-                  });
-              }
-
-              private void listen() {
-
-                  Intent intent =
-                      new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-
-                  intent.putExtra(
-                      RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                      RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                  );
-
-                  intent.putExtra(
-                      RecognizerIntent.EXTRA_LANGUAGE,
-                      "hi-IN"
-                  );
-
-                  startActivityForResult(intent, 100);
-              }
-
-              @Override
-              protected void onActivityResult(
-                  int requestCode,
-                  int resultCode,
-                  Intent data) {
-
-                  super.onActivityResult(
-                      requestCode,
-                      resultCode,
-                      data
-                  );
-
-                  if (requestCode == 100 &&
-                      resultCode == RESULT_OK &&
-                      data != null) {
-
-                      ArrayList<String> results =
-                          data.getStringArrayListExtra(
-                              RecognizerIntent.EXTRA_RESULTS
-                          );
-
-                      if (results != null && !results.isEmpty()) {
-                          handleCommand(results.get(0));
-                      }
-                  }
-              }
-
-              private void handleCommand(String command) {
-
-                  String q =
-                      command.toLowerCase(Locale.ROOT).trim();
-
-                  status.setText(
-                      "COMMAND RECEIVED:\n" + command
-                  );
-
-                  if (q.contains("youtube") ||
-                      q.contains("यूट्यूब") ||
-                      q.contains("यूटुब")) {
-
-                      say("Opening YouTube.");
-
-                      Intent app =
-                          getPackageManager()
-                          .getLaunchIntentForPackage(
-                              "com.google.android.youtube"
-                          );
-
-                      if (app != null) {
-                          startActivity(app);
-                      } else {
-                          startActivity(
-                              new Intent(
-                                  Intent.ACTION_VIEW,
-                                  Uri.parse(
-                                      "https://www.youtube.com"
-                                  )
-                              )
-                          );
-                      }
-
-                  } else if (
-                      q.contains("calculator") ||
-                      q.contains("कैलकुलेटर") ||
-                      q.contains("calculate")) {
-
-                      say("Opening calculator.");
-
-                      Intent calculator =
-                          new Intent(
-                              "android.intent.action.MAIN"
-                          );
-
-                      calculator.addCategory(
-                          "android.intent.category.APP_CALCULATOR"
-                      );
-
-                      try {
-                          startActivity(calculator);
-                      } catch (Exception e) {
-                          say("Calculator was not found.");
-                      }
-
-                  } else if (
-                      q.contains("browser") ||
-                      q.contains("google") ||
-                      q.contains("ब्राउज़र") ||
-                      q.contains("गूगल")) {
-
-                      say("Opening browser.");
-
-                      startActivity(
-                          new Intent(
-                              Intent.ACTION_VIEW,
-                              Uri.parse(
-                                  "https://www.google.com"
-                              )
-                          )
-                      );
-
-                  } else if (
-                      q.contains("hello") ||
-                      q.contains("hi") ||
-                      q.contains("hey") ||
-                      q.contains("हेलो") ||
-                      q.contains("हाय") ||
-                      q.contains("नमस्ते")) {
-
-                      say(
-                          "Hello. FRIDAY is ready."
-                      );
-
-                  } else if (
-                      q.contains("who are you") ||
-                      q.contains("tum kon ho") ||
-                      q.contains("तुम कौन हो")) {
-
-                      say(
-                          "I am FRIDAY, your personal AI assistant."
-                      );
-
-                  } else {
-
-                      say(
-                          "Command received. FRIDAY is ready."
-                      );
-                  }
-              }
-
-              private void say(String text) {
-
-                  if (tts != null) {
-                      tts.speak(
-                          text,
-                          TextToSpeech.QUEUE_FLUSH,
-                          null,
-                          "friday"
-                      );
-                  }
-              }
-
-              @Override
-              protected void onDestroy() {
-
-                  if (tts != null) {
-                      tts.shutdown();
-                  }
-
-                  super.onDestroy();
-              }
-          }
-          EOF
-
-      - name: Create FridayVoiceService.java
-        shell: bash
-        run: |
-          cat > app/src/main/java/com/example/friday/FridayVoiceService.java <<'EOF'
-          package com.example.friday;
-
-          import android.app.Notification;
-          import android.app.NotificationChannel;
-          import android.app.NotificationManager;
-          import android.app.Service;
-          import android.content.Intent;
-          import android.os.Build;
-          import android.os.IBinder;
-
-          public class FridayVoiceService extends Service {
-
-              private static final String CHANNEL =
-                  "friday_voice";
-
-              @Override
-              public void onCreate() {
-
-                  super.onCreate();
-
-                  if (Build.VERSION.SDK_INT >= 26) {
-
-                      NotificationChannel channel =
-                          new NotificationChannel(
-                              CHANNEL,
-                              "FRIDAY Voice",
-                              NotificationManager.IMPORTANCE_LOW
-                          );
-
-                      getSystemService(
-                          NotificationManager.class
-                      ).createNotificationChannel(channel);
-                  }
-
-                  Notification.Builder builder =
-                      Build.VERSION.SDK_INT >= 26
-                      ? new Notification.Builder(this, CHANNEL)
-                      : new Notification.Builder(this);
-
-                  builder
-                      .setContentTitle("FRIDAY")
-                      .setContentText(
-                          "FRIDAY voice service is active"
-                      )
-                      .setSmallIcon(
-                          android.R.drawable.ic_btn_speak_now
-                      );
-
-                  startForeground(
-                      77,
-                      builder.build()
-                  );
-              }
-
-              @Override
-              public int onStartCommand(
-                  Intent intent,
-                  int flags,
-                  int startId) {
-
-                  return START_STICKY;
-              }
-
-              @Override
-              public IBinder onBind(Intent intent) {
-                  return null;
-              }
-          }
-          EOF
-
-      - name: Create FridayAccessibilityService.java
-        shell: bash
-        run: |
-          cat > app/src/main/java/com/example/friday/FridayAccessibilityService.java <<'EOF'
-          package com.example.friday;
-
-          import android.accessibilityservice.AccessibilityService;
-          import android.view.accessibility.AccessibilityEvent;
-          import android.view.accessibility.AccessibilityNodeInfo;
-
-          public class FridayAccessibilityService
-              extends AccessibilityService {
-
-              @Override
-              public void onAccessibilityEvent(
-                  AccessibilityEvent event) {
-              }
-
-              @Override
-              public void onInterrupt() {
-              }
-
-              public boolean pressBack() {
-                  return performGlobalAction(
-                      GLOBAL_ACTION_BACK
-                  );
-              }
-
-              public boolean pressHome() {
-                  return performGlobalAction(
-                      GLOBAL_ACTION_HOME
-                  );
-              }
-
-              public boolean openRecentApps() {
-                  return performGlobalAction(
-                      GLOBAL_ACTION_RECENTS
-                  );
-              }
-
-              public AccessibilityNodeInfo getCurrentRoot() {
-                  return getRootInActiveWindow();
-              }
-          }
-          EOF
-
-      - name: Build Debug APK
-        run: |
-          gradle clean assembleDebug --stacktrace
-
-      - name: Verify APK
-        shell: bash
-        run: |
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
-          file app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload FRIDAY APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: FRIDAY-V3.1-FIXED-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+import os
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from openai import OpenAI
+from pydantic import BaseModel
+
+load_dotenv()
+
+APP_NAME = "FRIDAY AI"
+DATABASE = "friday.db"
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+API_KEY = os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=API_KEY) if API_KEY else None
+
+app = FastAPI(title=APP_NAME)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def get_db():
+    connection = sqlite3.connect(DATABASE)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def init_database():
+    db = get_db()
+
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            folder TEXT DEFAULT 'General',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            due_date TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            memory_key TEXT NOT NULL,
+            memory_value TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+
+    db.commit()
+    db.close()
+
+
+init_database()
+
+
+class ChatRequest(BaseModel):
+    user_id: str = "default_user"
+    message: str
+
+
+class NoteRequest(BaseModel):
+    user_id: str = "default_user"
+    title: str
+    content: str
+    folder: str = "General"
+
+
+class TaskRequest(BaseModel):
+    user_id: str = "default_user"
+    title: str
+    due_date: Optional[str] = None
+
+
+class MemoryRequest(BaseModel):
+    user_id: str = "default_user"
+    key: str
+    value: str
+
+
+def detect_mode(message: str) -> str:
+    text = message.lower()
+
+    if any(word in text for word in [
+        "english", "grammar", "sentence", "speaking",
+        "correct my english", "translate"
+    ]):
+        return "english"
+
+    if any(word in text for word in [
+        "trading", "stock", "share", "investment",
+        "finance", "paisa", "profit", "loss"
+    ]):
+        return "finance"
+
+    if any(word in text for word in [
+        "python", "coding", "programming", "ai sikho",
+        "learn ai", "learning", "study", "padhai"
+    ]):
+        return "learning"
+
+    if any(word in text for word in [
+        "note", "save this", "likh lo", "yaad rakhna"
+    ]):
+        return "notes"
+
+    if any(word in text for word in [
+        "task", "reminder", "remind", "yaad dilana",
+        "aaj ka plan", "tomorrow plan"
+    ]):
+        return "tasks"
+
+    return "general"
+
+
+def get_recent_messages(user_id: str, limit: int = 12):
+    db = get_db()
+
+    rows = db.execute(
+        """
+        SELECT role, content
+        FROM messages
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+
+    db.close()
+
+    return list(reversed(rows))
+
+
+def get_memories(user_id: str):
+    db = get_db()
+
+    rows = db.execute(
+        """
+        SELECT memory_key, memory_value
+        FROM memories
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 30
+        """,
+        (user_id,),
+    ).fetchall()
+
+    db.close()
+    return rows
+
+
+def save_message(user_id: str, role: str, content: str):
+    db = get_db()
+
+    db.execute(
+        """
+        INSERT INTO messages
+        (user_id, role, content, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (user_id, role, content, now()),
+    )
+
+    db.commit()
+    db.close()
+
+
+def build_system_prompt(mode: str, memories) -> str:
+    memory_text = "
+".join(
+        f"- {item['memory_key']}: {item['memory_value']}"
+        for item in memories
+    )
+
+    return f"""
+You are FRIDAY, a personal AI assistant.
+
+User preference:
+- Default language: Hinglish
+- User level: Beginner
+- Style: Practical, simple and step-by-step
+- Current mode: {mode}
+
+Important behavior:
+1. Explain difficult topics in simple language.
+2. Use Hindi-English mix unless the user asks for pure English.
+3. Help with AI, coding, English, productivity and learning.
+4. For finance and trading, provide education only.
+5. Never promise guaranteed profit.
+6. Never pretend that an action was completed if it was not.
+7. Ask for missing information when required.
+8. Before sending, deleting, buying or changing something external, ask for confirmation.
+9. Do not expose API keys or private data.
+10. Give concise but useful answers.
+
+Known user memories:
+{memory_text if memory_text else "No saved memories yet."}
+"""
+
+
+def fallback_response(message: str, mode: str) -> str:
+    if mode == "learning":
+        return (
+            "Learning mode active hai.
+
+"
+            "Aaj ka simple plan:
+"
+            "1. Topic ka basic concept samjho.
+"
+            "2. Ek practical example dekho.
+"
+            "3. Khud ek small exercise karo.
+"
+            "4. Mujhe apna answer bhejo, main check karunga."
+        )
+
+    if mode == "english":
+        return (
+            "English Coach mode active hai. "
+            "Apna English sentence bhejo. Main correction, better sentence "
+            "aur short explanation dunga."
+        )
+
+    if mode == "finance":
+        return (
+            "Finance learning mode active hai. Main risk, budgeting, "
+            "investing aur trading concepts samjha sakta hoon. "
+            "Guaranteed profit ya blind buy/sell signal nahi dunga."
+        )
+
+    if mode == "tasks":
+        return (
+            "Task banane ke liye mujhe task ka naam aur date/time batao. "
+            "Example: 'Kal subah Python practice yaad dilana.'"
+        )
+
+    if mode == "notes":
+        return (
+            "Note save karne ke liye title aur content bhejo. "
+            "Example: 'AI Idea naam se note save karo: voice assistant banana hai.'"
+        )
+
+    return (
+        "Namaste! Main FRIDAY hoon.
+
+"
+        "Main tumhari AI learning, coding, English, notes, tasks "
+        "aur finance education mein help kar sakta hoon."
+    )
+
+
+def generate_ai_response(
+    user_id: str,
+    message: str,
+    mode: str,
+) -> str:
+    memories = get_memories(user_id)
+    recent = get_recent_messages(user_id)
+
+    if client is None:
+        return fallback_response(message, mode)
+
+    system_prompt = build_system_prompt(mode, memories)
+
+    conversation = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        }
+    ]
+
+    for item in recent:
+        conversation.append(
+            {
+                "role": item["role"],
+                "content": item["content"],
+            }
+        )
+
+    conversation.append(
+        {
+            "role": "user",
+            "content": message,
+        }
+    )
+
+    try:
+        result = client.chat.completions.create(
+            model=MODEL,
+            messages=conversation,
+            temperature=0.6,
+        )
+
+        return result.choices[0].message.content.strip()
+
+    except Exception:
+        return (
+            "AI service abhi available nahi hai. "
+            "API key, model name aur internet connection check karo."
+        )
+
+
+@app.get("/")
+def root():
+    return {
+        "app": APP_NAME,
+        "status": "online",
+        "message": "FRIDAY backend is running",
+    }
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy",
+        "ai_configured": bool(API_KEY),
+    }
+
+
+@app.get("/app")
+def frontend():
+    file_path = Path("static/index.html")
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Frontend file not found",
+        )
+
+    return FileResponse(file_path)
+
+
+@app.post("/chat")
+def chat(request: ChatRequest):
+    message = request.message.strip()
+
+    if not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Message cannot be empty",
+        )
+
+    mode = detect_mode(message)
+
+    save_message(
+        request.user_id,
+        "user",
+        message,
+    )
+
+    response = generate_ai_response(
+        request.user_id,
+        message,
+        mode,
+    )
+
+    save_message(
+        request.user_id,
+        "assistant",
+        response,
+    )
+
+    return {
+        "assistant": APP_NAME,
+        "mode": mode,
+        "response": response,
+    }
+
+
+@app.post("/notes")
+def create_note(request: NoteRequest):
+    if not request.title.strip() or not request.content.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Title and content are required",
+        )
+
+    db = get_db()
+
+    cursor = db.execute(
+        """
+        INSERT INTO notes
+        (user_id, title, content, folder, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            request.user_id,
+            request.title.strip(),
+            request.content.strip(),
+            request.folder.strip(),
+            now(),
+        ),
+    )
+
+    db.commit()
+    note_id = cursor.lastrowid
+    db.close()
+
+    return {
+        "success": True,
+        "note_id": note_id,
+        "message": "Note save ho gaya.",
+    }
+
+
+@app.get("/notes/{user_id}")
+def list_notes(user_id: str):
+    db = get_db()
+
+    rows = db.execute(
+        """
+        SELECT *
+        FROM notes
+        WHERE user_id = ?
+        ORDER BY id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+    db.close()
+
+    return [dict(row) for row in rows]
+
+
+@app.delete("/notes/{note_id}")
+def delete_note(note_id: int):
+    db = get_db()
+
+    cursor = db.execute(
+        "DELETE FROM notes WHERE id = ?",
+        (note_id,),
+    )
+
+    db.commit()
+    deleted = cursor.rowcount
+    db.close()
+
+    if deleted == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Note not found",
+        )
+
+    return {
+        "success": True,
+        "message": "Note delete ho gaya.",
+    }
+
+
+@app.post("/tasks")
+def create_task(request: TaskRequest):
+    if not request.title.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Task title is required",
+        )
+
+    db = get_db()
+
+    cursor = db.execute(
+        """
+        INSERT INTO tasks
+        (user_id, title, due_date, status, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            request.user_id,
+            request.title.strip(),
+            request.due_date,
+            "pending",
+            now(),
+        ),
+    )
+
+    db.commit()
+    task_id = cursor.lastrowid
+    db.close()
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "message": "Task create ho gaya.",
+    }
+
+
+@app.get("/tasks/{user_id}")
+def list_tasks(user_id: str):
+    db = get_db()
+
+    rows = db.execute(
+        """
+        SELECT *
+        FROM tasks
+        WHERE user_id = ?
+        ORDER BY id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+    db.close()
+
+    return [dict(row) for row in rows]
+
+
+@app.patch("/tasks/{task_id}/complete")
+def complete_task(task_id: int):
+    db = get_db()
+
+    cursor = db.execute(
+        """
+        UPDATE tasks
+        SET status = 'completed'
+        WHERE id = ?
+        """,
+        (task_id,),
+    )
+
+    db.commit()
+    updated = cursor.rowcount
+    db.close()
+
+    if updated == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+
+    return {
+        "success": True,
+        "message": "Task complete mark ho gaya.",
+    }
+
+
+@app.post("/memory")
+def save_memory(request: MemoryRequest):
+    if not request.key.strip() or not request.value.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Memory key and value are required",
+        )
+
+    db = get_db()
+
+    db.execute(
+        """
+        INSERT INTO memories
+        (user_id, memory_key, memory_value, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            request.user_id,
+            request.key.strip(),
+            request.value.strip(),
+            now(),
+        ),
+    )
+
+    db.commit()
+    db.close()
+
+    return {
+        "success": True,
+        "message": "Memory save ho gayi.",
+    }
+
+
+@app.get("/memory/{user_id}")
+def list_memory(user_id: str):
+    db = get_db()
+
+    rows = db.execute(
+        """
+        SELECT *
+        FROM memories
+        WHERE user_id = ?
+        ORDER BY id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+    db.close()
+
+    return [dict(row) for row in rows]
