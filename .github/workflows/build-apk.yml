@@ -38,12 +38,15 @@ jobs:
                   gradlePluginPortal()
               }
           }
+
           dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
               repositories {
                   google()
                   mavenCentral()
               }
           }
+
           rootProject.name = "MyAIAssistant2026"
           include(":app")
           EOF
@@ -67,8 +70,8 @@ jobs:
                   applicationId = "com.example.myaiassistant"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 1
-                  versionName = "1.0"
+                  versionCode = 2
+                  versionName = "1.1"
               }
           }
           EOF
@@ -81,7 +84,9 @@ jobs:
 
               <application
                   android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:label="My AI Assistant">
+                  android:label="My AI Assistant"
+                  android:allowBackup="false"
+                  android:supportsRtl="true">
 
                   <activity
                       android:name=".MainActivity"
@@ -123,7 +128,7 @@ jobs:
                   layout.setPadding(32, 32, 32, 24);
 
                   TextView title = new TextView(this);
-                  title.setText("🤖 My AI Assistant");
+                  title.setText("My AI Assistant");
                   title.setTextSize(26);
 
                   chat = new TextView(this);
@@ -142,13 +147,21 @@ jobs:
                   send.setText("Send");
 
                   Button voice = new Button(this);
-                  voice.setText("🎙️ Voice");
+                  voice.setText("Voice");
 
-                  row.addView(send, new LinearLayout.LayoutParams(0, -2, 1));
-                  row.addView(voice, new LinearLayout.LayoutParams(0, -2, 1));
+                  row.addView(send,
+                      new LinearLayout.LayoutParams(0, -2, 1));
+
+                  row.addView(voice,
+                      new LinearLayout.LayoutParams(0, -2, 1));
 
                   layout.addView(title);
-                  layout.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+                  layout.addView(
+                      scroll,
+                      new LinearLayout.LayoutParams(-1, 0, 1)
+                  );
+
                   layout.addView(input);
                   layout.addView(row);
 
@@ -158,23 +171,26 @@ jobs:
                       respond(input.getText().toString())
                   );
 
-                  voice.setOnClickListener(v -> {
-                      Intent intent = new Intent(
-                          RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-                      );
+                  voice.setOnClickListener(v -> startVoiceInput());
+              }
 
-                      intent.putExtra(
-                          RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                          RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                      );
+              private void startVoiceInput() {
 
-                      intent.putExtra(
-                          RecognizerIntent.EXTRA_LANGUAGE,
-                          Locale.getDefault()
-                      );
+                  Intent intent = new Intent(
+                      RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+                  );
 
-                      startActivityForResult(intent, 100);
-                  });
+                  intent.putExtra(
+                      RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                      RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                  );
+
+                  intent.putExtra(
+                      RecognizerIntent.EXTRA_LANGUAGE,
+                      Locale.getDefault()
+                  );
+
+                  startActivityForResult(intent, 100);
               }
 
               @Override
@@ -189,7 +205,9 @@ jobs:
                       data
                   );
 
-                  if (requestCode == 100 && resultCode == RESULT_OK && data != null) {
+                  if (requestCode == 100 &&
+                      resultCode == RESULT_OK &&
+                      data != null) {
 
                       ArrayList<String> results =
                           data.getStringArrayListExtra(
@@ -197,8 +215,11 @@ jobs:
                           );
 
                       if (results != null && !results.isEmpty()) {
+
                           String text = results.get(0);
+
                           input.setText(text);
+
                           respond(text);
                       }
                   }
@@ -214,22 +235,32 @@ jobs:
 
                   String answer;
 
-                  if (q.toLowerCase().contains("hello") ||
-                      q.toLowerCase().contains("hi")) {
+                  String lower = q.toLowerCase();
+
+                  if (lower.contains("hello") ||
+                      lower.contains("hi")) {
 
                       answer = "Hello! Main ready hoon.";
 
-                  } else if (q.toLowerCase().contains("ai")) {
+                  } else if (lower.contains("ai")) {
 
-                      answer = "AI learning: Python → APIs → LLMs → AI Agents.";
+                      answer =
+                          "AI learning: Python -> APIs -> LLMs -> AI Agents.";
 
-                  } else if (q.toLowerCase().contains("earning")) {
+                  } else if (lower.contains("earning")) {
 
-                      answer = "Main legitimate online earning opportunities samajhne me help karunga.";
+                      answer =
+                          "Main legitimate online earning opportunities samajhne me help karunga.";
+
+                  } else if (lower.contains("help")) {
+
+                      answer =
+                          "Main AI learning, earning ideas aur basic tasks me help kar sakta hoon.";
 
                   } else {
 
-                      answer = "Tumne kaha: " + q +
+                      answer =
+                          "Tumne kaha: " + q +
                           "\\n\\nYe My AI Assistant ka V1 demo response hai.";
                   }
 
@@ -250,5 +281,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyAIAssistant-debug-apk
+          name: MyAIAssistant-v1.1-apk
           path: app/build/outputs/apk/debug/app-debug.apk
