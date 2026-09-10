@@ -38,7 +38,12 @@ jobs:
                   gradlePluginPortal()
               }
           }
-
+          dependencyResolutionManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
           rootProject.name = "MyAIAssistant2026"
           include(":app")
           EOF
