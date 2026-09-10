@@ -1,0 +1,249 @@
+name: Build My AI Assistant
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Create Android project
+        shell: bash
+        run: |
+          mkdir -p app/src/main/java/com/example/myaiassistant
+
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          rootProject.name = "MyAIAssistant2026"
+          include(":app")
+          EOF
+
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+          }
+          EOF
+
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+          }
+
+          android {
+              namespace = "com.example.myaiassistant"
+              compileSdk = 35
+
+              defaultConfig {
+                  applicationId = "com.example.myaiassistant"
+                  minSdk = 26
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+
+              <application
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
+                  android:label="My AI Assistant">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+
+                  </activity>
+              </application>
+
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/example/myaiassistant/MainActivity.java <<'EOF'
+          package com.example.myaiassistant;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.content.Intent;
+          import android.speech.RecognizerIntent;
+          import android.widget.*;
+          import java.util.ArrayList;
+          import java.util.Locale;
+
+          public class MainActivity extends Activity {
+
+              TextView chat;
+              EditText input;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  LinearLayout layout = new LinearLayout(this);
+                  layout.setOrientation(LinearLayout.VERTICAL);
+                  layout.setPadding(32, 32, 32, 24);
+
+                  TextView title = new TextView(this);
+                  title.setText("🤖 My AI Assistant");
+                  title.setTextSize(26);
+
+                  chat = new TextView(this);
+                  chat.setText("Namaste! Main tumhara AI Assistant hoon.");
+                  chat.setTextSize(17);
+
+                  ScrollView scroll = new ScrollView(this);
+                  scroll.addView(chat);
+
+                  input = new EditText(this);
+                  input.setHint("Ask me anything...");
+
+                  LinearLayout row = new LinearLayout(this);
+
+                  Button send = new Button(this);
+                  send.setText("Send");
+
+                  Button voice = new Button(this);
+                  voice.setText("🎙️ Voice");
+
+                  row.addView(send, new LinearLayout.LayoutParams(0, -2, 1));
+                  row.addView(voice, new LinearLayout.LayoutParams(0, -2, 1));
+
+                  layout.addView(title);
+                  layout.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+                  layout.addView(input);
+                  layout.addView(row);
+
+                  setContentView(layout);
+
+                  send.setOnClickListener(v ->
+                      respond(input.getText().toString())
+                  );
+
+                  voice.setOnClickListener(v -> {
+                      Intent intent = new Intent(
+                          RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+                      );
+
+                      intent.putExtra(
+                          RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                          RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                      );
+
+                      intent.putExtra(
+                          RecognizerIntent.EXTRA_LANGUAGE,
+                          Locale.getDefault()
+                      );
+
+                      startActivityForResult(intent, 100);
+                  });
+              }
+
+              @Override
+              protected void onActivityResult(
+                      int requestCode,
+                      int resultCode,
+                      Intent data) {
+
+                  super.onActivityResult(
+                      requestCode,
+                      resultCode,
+                      data
+                  );
+
+                  if (requestCode == 100 && resultCode == RESULT_OK && data != null) {
+
+                      ArrayList<String> results =
+                          data.getStringArrayListExtra(
+                              RecognizerIntent.EXTRA_RESULTS
+                          );
+
+                      if (results != null && !results.isEmpty()) {
+                          String text = results.get(0);
+                          input.setText(text);
+                          respond(text);
+                      }
+                  }
+              }
+
+              private void respond(String question) {
+
+                  String q = question.trim();
+
+                  if (q.isEmpty()) {
+                      return;
+                  }
+
+                  String answer;
+
+                  if (q.toLowerCase().contains("hello") ||
+                      q.toLowerCase().contains("hi")) {
+
+                      answer = "Hello! Main ready hoon.";
+
+                  } else if (q.toLowerCase().contains("ai")) {
+
+                      answer = "AI learning: Python → APIs → LLMs → AI Agents.";
+
+                  } else if (q.toLowerCase().contains("earning")) {
+
+                      answer = "Main legitimate online earning opportunities samajhne me help karunga.";
+
+                  } else {
+
+                      answer = "Tumne kaha: " + q +
+                          "\\n\\nYe My AI Assistant ka V1 demo response hai.";
+                  }
+
+                  chat.setText(
+                      chat.getText() +
+                      "\\n\\nYou: " + q +
+                      "\\nAssistant: " + answer
+                  );
+
+                  input.setText("");
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyAIAssistant-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
