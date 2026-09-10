@@ -1,4 +1,4 @@
-name: Build FRIDAY V3
+name: Build FRIDAY V3 Fixed
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,12 +25,16 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Create FRIDAY V3 project
+      - name: Create project folders
         shell: bash
         run: |
           mkdir -p app/src/main/java/com/example/friday
+          mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/xml
 
+      - name: Create settings.gradle.kts
+        shell: bash
+        run: |
           cat > settings.gradle.kts <<'EOF'
           pluginManagement {
               repositories {
@@ -48,16 +52,22 @@ jobs:
               }
           }
 
-          rootProject.name = "FRIDAY_V3"
+          rootProject.name = "FRIDAY"
           include(":app")
           EOF
 
+      - name: Create root build.gradle.kts
+        shell: bash
+        run: |
           cat > build.gradle.kts <<'EOF'
           plugins {
               id("com.android.application") version "8.7.3" apply false
           }
           EOF
 
+      - name: Create app build.gradle.kts
+        shell: bash
+        run: |
           cat > app/build.gradle.kts <<'EOF'
           plugins {
               id("com.android.application")
@@ -71,12 +81,25 @@ jobs:
                   applicationId = "com.example.friday"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 5
-                  versionName = "3.0"
+                  versionCode = 6
+                  versionName = "3.1"
               }
           }
           EOF
 
+      - name: Create strings.xml
+        shell: bash
+        run: |
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <resources>
+              <string name="app_name">FRIDAY</string>
+              <string name="accessibility_description">FRIDAY user-approved automation service.</string>
+          </resources>
+          EOF
+
+      - name: Create accessibility config
+        shell: bash
+        run: |
           cat > app/src/main/res/xml/friday_accessibility_config.xml <<'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <accessibility-service
@@ -86,19 +109,12 @@ jobs:
               android:accessibilityFlags="flagDefault"
               android:canRetrieveWindowContent="true"
               android:description="@string/accessibility_description"
-              android:notificationTimeout="100"
-              android:settingsActivity="com.example.friday.MainActivity" />
+              android:notificationTimeout="100" />
           EOF
 
-          mkdir -p app/src/main/res/values
-
-          cat > app/src/main/res/values/strings.xml <<'EOF'
-          <resources>
-              <string name="app_name">FRIDAY</string>
-              <string name="accessibility_description">FRIDAY uses Android Accessibility features for user-approved automation.</string>
-          </resources>
-          EOF
-
+      - name: Create AndroidManifest.xml
+        shell: bash
+        run: |
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -109,7 +125,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 
               <application
-                  android:theme="@android:style/Theme.Material.NoActionBar"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
                   android:label="@string/app_name"
                   android:allowBackup="false"
                   android:supportsRtl="true">
@@ -150,6 +166,9 @@ jobs:
           </manifest>
           EOF
 
+      - name: Create MainActivity.java
+        shell: bash
+        run: |
           cat > app/src/main/java/com/example/friday/MainActivity.java <<'EOF'
           package com.example.friday;
 
@@ -193,9 +212,14 @@ jobs:
                   root.setPadding(32, 32, 32, 32);
 
                   TextView title = new TextView(this);
-                  title.setText("FRIDAY V3");
-                  title.setTextSize(36);
+                  title.setText("FRIDAY");
+                  title.setTextSize(38);
                   title.setGravity(Gravity.CENTER);
+
+                  TextView version = new TextView(this);
+                  version.setText("V3.1 • AI ASSISTANT");
+                  version.setTextSize(18);
+                  version.setGravity(Gravity.CENTER);
 
                   TextView core = new TextView(this);
                   core.setText("◉\n\nAI CORE\n\nVOICE + AUTOMATION");
@@ -209,7 +233,7 @@ jobs:
                   status.setPadding(0, 20, 0, 20);
 
                   Button speak = new Button(this);
-                  speak.setText("🎙️ SPEAK TO FRIDAY");
+                  speak.setText("🎙 SPEAK TO FRIDAY");
 
                   Button service = new Button(this);
                   service.setText("ACTIVATE VOICE SERVICE");
@@ -218,6 +242,7 @@ jobs:
                   accessibility.setText("ENABLE AUTOMATION");
 
                   root.addView(title);
+                  root.addView(version);
                   root.addView(core);
                   root.addView(status);
                   root.addView(speak);
@@ -245,7 +270,7 @@ jobs:
                           startService(intent);
                       }
 
-                      status.setText("VOICE SERVICE • ACTIVE");
+                      status.setText("VOICE SERVICE ACTIVE");
                       say("FRIDAY voice service is active.");
                   });
 
@@ -253,12 +278,10 @@ jobs:
 
                       try {
                           startActivity(
-                              new Intent(
-                                  Settings.ACTION_ACCESSIBILITY_SETTINGS
-                              )
+                              new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                           );
 
-                          say("Please enable FRIDAY accessibility service.");
+                          say("Please enable FRIDAY automation service.");
 
                       } catch (Exception e) {
                           say("Accessibility settings could not be opened.");
@@ -286,9 +309,9 @@ jobs:
 
               @Override
               protected void onActivityResult(
-                      int requestCode,
-                      int resultCode,
-                      Intent data) {
+                  int requestCode,
+                  int resultCode,
+                  Intent data) {
 
                   super.onActivityResult(
                       requestCode,
@@ -305,9 +328,7 @@ jobs:
                               RecognizerIntent.EXTRA_RESULTS
                           );
 
-                      if (results != null &&
-                          !results.isEmpty()) {
-
+                      if (results != null && !results.isEmpty()) {
                           handleCommand(results.get(0));
                       }
                   }
@@ -318,40 +339,11 @@ jobs:
                   String q =
                       command.toLowerCase(Locale.ROOT).trim();
 
-                  status.setText("COMMAND:\n" + command);
+                  status.setText(
+                      "COMMAND RECEIVED:\n" + command
+                  );
 
-                  // YouTube + search
-                  if ((q.contains("youtube") ||
-                       q.contains("यूट्यूब") ||
-                       q.contains("यूटुब")) &&
-                      (q.contains("search") ||
-                       q.contains("सर्च") ||
-                       q.contains("खोज") ||
-                       q.contains("ढूंढ"))) {
-
-                      String query = extractSearchQuery(q);
-
-                      if (query.isEmpty()) {
-                          say("What should I search on YouTube?");
-                          return;
-                      }
-
-                      say("Searching YouTube.");
-
-                      Intent search =
-                          new Intent(
-                              Intent.ACTION_VIEW,
-                              Uri.parse(
-                                  "https://www.youtube.com/results?search_query="
-                                  + Uri.encode(query)
-                              )
-                          );
-
-                      startActivity(search);
-
-                  // Open YouTube
-                  } else if (
-                      q.contains("youtube") ||
+                  if (q.contains("youtube") ||
                       q.contains("यूट्यूब") ||
                       q.contains("यूटुब")) {
 
@@ -369,12 +361,13 @@ jobs:
                           startActivity(
                               new Intent(
                                   Intent.ACTION_VIEW,
-                                  Uri.parse("https://www.youtube.com")
+                                  Uri.parse(
+                                      "https://www.youtube.com"
+                                  )
                               )
                           );
                       }
 
-                  // Calculator
                   } else if (
                       q.contains("calculator") ||
                       q.contains("कैलकुलेटर") ||
@@ -383,7 +376,9 @@ jobs:
                       say("Opening calculator.");
 
                       Intent calculator =
-                          new Intent("android.intent.action.MAIN");
+                          new Intent(
+                              "android.intent.action.MAIN"
+                          );
 
                       calculator.addCategory(
                           "android.intent.category.APP_CALCULATOR"
@@ -392,26 +387,26 @@ jobs:
                       try {
                           startActivity(calculator);
                       } catch (Exception e) {
-                          say("Calculator app was not found.");
+                          say("Calculator was not found.");
                       }
 
-                  // Browser/search
                   } else if (
-                      q.contains("browser kholo") ||
-                      q.contains("browser खोलो") ||
-                      q.contains("google kholo") ||
-                      q.contains("गूगल खोलो")) {
+                      q.contains("browser") ||
+                      q.contains("google") ||
+                      q.contains("ब्राउज़र") ||
+                      q.contains("गूगल")) {
 
                       say("Opening browser.");
 
                       startActivity(
                           new Intent(
                               Intent.ACTION_VIEW,
-                              Uri.parse("https://www.google.com")
+                              Uri.parse(
+                                  "https://www.google.com"
+                              )
                           )
                       );
 
-                  // Greetings
                   } else if (
                       q.contains("hello") ||
                       q.contains("hi") ||
@@ -420,57 +415,25 @@ jobs:
                       q.contains("हाय") ||
                       q.contains("नमस्ते")) {
 
-                      say("Hello. FRIDAY is ready.");
+                      say(
+                          "Hello. FRIDAY is ready."
+                      );
 
-                  // Identity
                   } else if (
                       q.contains("who are you") ||
                       q.contains("tum kon ho") ||
                       q.contains("तुम कौन हो")) {
 
-                      say("I am FRIDAY, your personal AI assistant.");
+                      say(
+                          "I am FRIDAY, your personal AI assistant."
+                      );
 
                   } else {
 
                       say(
-                          "Command received. " +
-                          "FRIDAY is ready for more automation."
+                          "Command received. FRIDAY is ready."
                       );
                   }
-              }
-
-              private String extractSearchQuery(String q) {
-
-                  String[] markers = {
-                      "search",
-                      "सर्च",
-                      "खोज",
-                      "ढूंढ"
-                  };
-
-                  for (String marker : markers) {
-
-                      int index = q.indexOf(marker);
-
-                      if (index >= 0) {
-
-                          String result =
-                              q.substring(index + marker.length())
-                               .trim();
-
-                          result = result
-                              .replace("on youtube", "")
-                              .replace("youtube par", "")
-                              .replace("youtube pe", "")
-                              .replace("यूट्यूब पर", "")
-                              .replace("यूट्यूब पे", "")
-                              .trim();
-
-                          return result;
-                      }
-                  }
-
-                  return "";
               }
 
               private void say(String text) {
@@ -497,6 +460,9 @@ jobs:
           }
           EOF
 
+      - name: Create FridayVoiceService.java
+        shell: bash
+        run: |
           cat > app/src/main/java/com/example/friday/FridayVoiceService.java <<'EOF'
           package com.example.friday;
 
@@ -510,7 +476,8 @@ jobs:
 
           public class FridayVoiceService extends Service {
 
-              private static final String CHANNEL = "friday_voice";
+              private static final String CHANNEL =
+                  "friday_voice";
 
               @Override
               public void onCreate() {
@@ -531,15 +498,10 @@ jobs:
                       ).createNotificationChannel(channel);
                   }
 
-                  Notification.Builder builder;
-
-                  if (Build.VERSION.SDK_INT >= 26) {
-                      builder =
-                          new Notification.Builder(this, CHANNEL);
-                  } else {
-                      builder =
-                          new Notification.Builder(this);
-                  }
+                  Notification.Builder builder =
+                      Build.VERSION.SDK_INT >= 26
+                      ? new Notification.Builder(this, CHANNEL)
+                      : new Notification.Builder(this);
 
                   builder
                       .setContentTitle("FRIDAY")
@@ -550,14 +512,17 @@ jobs:
                           android.R.drawable.ic_btn_speak_now
                       );
 
-                  startForeground(77, builder.build());
+                  startForeground(
+                      77,
+                      builder.build()
+                  );
               }
 
               @Override
               public int onStartCommand(
-                      Intent intent,
-                      int flags,
-                      int startId) {
+                  Intent intent,
+                  int flags,
+                  int startId) {
 
                   return START_STICKY;
               }
@@ -569,6 +534,9 @@ jobs:
           }
           EOF
 
+      - name: Create FridayAccessibilityService.java
+        shell: bash
+        run: |
           cat > app/src/main/java/com/example/friday/FridayAccessibilityService.java <<'EOF'
           package com.example.friday;
 
@@ -577,17 +545,15 @@ jobs:
           import android.view.accessibility.AccessibilityNodeInfo;
 
           public class FridayAccessibilityService
-                  extends AccessibilityService {
+              extends AccessibilityService {
 
               @Override
               public void onAccessibilityEvent(
-                      AccessibilityEvent event) {
-                  // Foundation for user-approved UI automation.
+                  AccessibilityEvent event) {
               }
 
               @Override
               public void onInterrupt() {
-                  // Accessibility interruption.
               }
 
               public boolean pressBack() {
@@ -614,11 +580,18 @@ jobs:
           }
           EOF
 
-      - name: Build APK
-        run: gradle assembleDebug --stacktrace
+      - name: Build Debug APK
+        run: |
+          gradle clean assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Verify APK
+        shell: bash
+        run: |
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          file app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload FRIDAY APK
         uses: actions/upload-artifact@v4
         with:
-          name: FRIDAY-V3-apk
+          name: FRIDAY-V3.1-FIXED-APK
           path: app/build/outputs/apk/debug/app-debug.apk
