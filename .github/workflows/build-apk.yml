@@ -1,4 +1,4 @@
-name: Build FRIDAY V2
+name: Build FRIDAY V3
 
 on:
   workflow_dispatch:
@@ -25,10 +25,11 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Create FRIDAY project
+      - name: Create FRIDAY V3 project
         shell: bash
         run: |
           mkdir -p app/src/main/java/com/example/friday
+          mkdir -p app/src/main/res/xml
 
           cat > settings.gradle.kts <<'EOF'
           pluginManagement {
@@ -47,7 +48,7 @@ jobs:
               }
           }
 
-          rootProject.name = "FRIDAY_V2"
+          rootProject.name = "FRIDAY_V3"
           include(":app")
           EOF
 
@@ -70,10 +71,32 @@ jobs:
                   applicationId = "com.example.friday"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 3
-                  versionName = "2.0"
+                  versionCode = 5
+                  versionName = "3.0"
               }
           }
+          EOF
+
+          cat > app/src/main/res/xml/friday_accessibility_config.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service
+              xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeAllMask"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagDefault"
+              android:canRetrieveWindowContent="true"
+              android:description="@string/accessibility_description"
+              android:notificationTimeout="100"
+              android:settingsActivity="com.example.friday.MainActivity" />
+          EOF
+
+          mkdir -p app/src/main/res/values
+
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <resources>
+              <string name="app_name">FRIDAY</string>
+              <string name="accessibility_description">FRIDAY uses Android Accessibility features for user-approved automation.</string>
+          </resources>
           EOF
 
           cat > app/src/main/AndroidManifest.xml <<'EOF'
@@ -87,7 +110,7 @@ jobs:
 
               <application
                   android:theme="@android:style/Theme.Material.NoActionBar"
-                  android:label="FRIDAY"
+                  android:label="@string/app_name"
                   android:allowBackup="false"
                   android:supportsRtl="true">
 
@@ -107,6 +130,21 @@ jobs:
                       android:foregroundServiceType="microphone"
                       android:exported="false"/>
 
+                  <service
+                      android:name=".FridayAccessibilityService"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                      android:exported="false">
+
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService"/>
+                      </intent-filter>
+
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/friday_accessibility_config"/>
+
+                  </service>
+
               </application>
 
           </manifest>
@@ -119,7 +157,9 @@ jobs:
           import android.app.Activity;
           import android.content.Intent;
           import android.content.pm.PackageManager;
+          import android.net.Uri;
           import android.os.Bundle;
+          import android.provider.Settings;
           import android.speech.RecognizerIntent;
           import android.speech.tts.TextToSpeech;
           import android.view.Gravity;
@@ -153,57 +193,76 @@ jobs:
                   root.setPadding(32, 32, 32, 32);
 
                   TextView title = new TextView(this);
-                  title.setText("FRIDAY");
+                  title.setText("FRIDAY V3");
                   title.setTextSize(36);
                   title.setGravity(Gravity.CENTER);
 
                   TextView core = new TextView(this);
-                  core.setText("◉\n\nAI CORE");
-                  core.setTextSize(25);
+                  core.setText("◉\n\nAI CORE\n\nVOICE + AUTOMATION");
+                  core.setTextSize(22);
                   core.setGravity(Gravity.CENTER);
 
                   status = new TextView(this);
                   status.setText("SYSTEM READY");
                   status.setTextSize(18);
                   status.setGravity(Gravity.CENTER);
-                  status.setPadding(0, 25, 0, 25);
+                  status.setPadding(0, 20, 0, 20);
 
                   Button speak = new Button(this);
                   speak.setText("🎙️ SPEAK TO FRIDAY");
 
-                  Button activate = new Button(this);
-                  activate.setText("ACTIVATE VOICE SERVICE");
+                  Button service = new Button(this);
+                  service.setText("ACTIVATE VOICE SERVICE");
+
+                  Button accessibility = new Button(this);
+                  accessibility.setText("ENABLE AUTOMATION");
 
                   root.addView(title);
                   root.addView(core);
                   root.addView(status);
                   root.addView(speak);
-                  root.addView(activate);
+                  root.addView(service);
+                  root.addView(accessibility);
 
                   setContentView(root);
 
                   tts = new TextToSpeech(this, result -> {
                       if (result == TextToSpeech.SUCCESS) {
-                          tts.setLanguage(Locale.getDefault());
+                          tts.setLanguage(new Locale("hi", "IN"));
                       }
                   });
 
                   speak.setOnClickListener(v -> listen());
 
-                  activate.setOnClickListener(v -> {
+                  service.setOnClickListener(v -> {
 
-                      Intent service =
+                      Intent intent =
                           new Intent(this, FridayVoiceService.class);
 
                       if (android.os.Build.VERSION.SDK_INT >= 26) {
-                          startForegroundService(service);
+                          startForegroundService(intent);
                       } else {
-                          startService(service);
+                          startService(intent);
                       }
 
                       status.setText("VOICE SERVICE • ACTIVE");
+                      say("FRIDAY voice service is active.");
+                  });
 
-                      say("Yes, I'm listening.");
+                  accessibility.setOnClickListener(v -> {
+
+                      try {
+                          startActivity(
+                              new Intent(
+                                  Settings.ACTION_ACCESSIBILITY_SETTINGS
+                              )
+                          );
+
+                          say("Please enable FRIDAY accessibility service.");
+
+                      } catch (Exception e) {
+                          say("Accessibility settings could not be opened.");
+                      }
                   });
               }
 
@@ -257,13 +316,44 @@ jobs:
               private void handleCommand(String command) {
 
                   String q =
-                      command.toLowerCase(Locale.ROOT);
+                      command.toLowerCase(Locale.ROOT).trim();
 
-                  status.setText(
-                      "COMMAND:\n" + command
-                  );
+                  status.setText("COMMAND:\n" + command);
 
-                  if (q.contains("youtube")) {
+                  // YouTube + search
+                  if ((q.contains("youtube") ||
+                       q.contains("यूट्यूब") ||
+                       q.contains("यूटुब")) &&
+                      (q.contains("search") ||
+                       q.contains("सर्च") ||
+                       q.contains("खोज") ||
+                       q.contains("ढूंढ"))) {
+
+                      String query = extractSearchQuery(q);
+
+                      if (query.isEmpty()) {
+                          say("What should I search on YouTube?");
+                          return;
+                      }
+
+                      say("Searching YouTube.");
+
+                      Intent search =
+                          new Intent(
+                              Intent.ACTION_VIEW,
+                              Uri.parse(
+                                  "https://www.youtube.com/results?search_query="
+                                  + Uri.encode(query)
+                              )
+                          );
+
+                      startActivity(search);
+
+                  // Open YouTube
+                  } else if (
+                      q.contains("youtube") ||
+                      q.contains("यूट्यूब") ||
+                      q.contains("यूटुब")) {
 
                       say("Opening YouTube.");
 
@@ -275,18 +365,25 @@ jobs:
 
                       if (app != null) {
                           startActivity(app);
+                      } else {
+                          startActivity(
+                              new Intent(
+                                  Intent.ACTION_VIEW,
+                                  Uri.parse("https://www.youtube.com")
+                              )
+                          );
                       }
 
+                  // Calculator
                   } else if (
                       q.contains("calculator") ||
-                      q.contains("कैलकुलेटर")) {
+                      q.contains("कैलकुलेटर") ||
+                      q.contains("calculate")) {
 
                       say("Opening calculator.");
 
                       Intent calculator =
-                          new Intent(
-                              "android.intent.action.MAIN"
-                          );
+                          new Intent("android.intent.action.MAIN");
 
                       calculator.addCategory(
                           "android.intent.category.APP_CALCULATOR"
@@ -294,28 +391,91 @@ jobs:
 
                       try {
                           startActivity(calculator);
-                      } catch (Exception ignored) {}
+                      } catch (Exception e) {
+                          say("Calculator app was not found.");
+                      }
 
+                  // Browser/search
+                  } else if (
+                      q.contains("browser kholo") ||
+                      q.contains("browser खोलो") ||
+                      q.contains("google kholo") ||
+                      q.contains("गूगल खोलो")) {
+
+                      say("Opening browser.");
+
+                      startActivity(
+                          new Intent(
+                              Intent.ACTION_VIEW,
+                              Uri.parse("https://www.google.com")
+                          )
+                      );
+
+                  // Greetings
                   } else if (
                       q.contains("hello") ||
                       q.contains("hi") ||
-                      q.contains("हेलो")) {
+                      q.contains("hey") ||
+                      q.contains("हेलो") ||
+                      q.contains("हाय") ||
+                      q.contains("नमस्ते")) {
 
                       say("Hello. FRIDAY is ready.");
+
+                  // Identity
+                  } else if (
+                      q.contains("who are you") ||
+                      q.contains("tum kon ho") ||
+                      q.contains("तुम कौन हो")) {
+
+                      say("I am FRIDAY, your personal AI assistant.");
 
                   } else {
 
                       say(
-                          "I heard you. " +
-                          "Advanced FRIDAY controls will be added."
+                          "Command received. " +
+                          "FRIDAY is ready for more automation."
                       );
                   }
+              }
+
+              private String extractSearchQuery(String q) {
+
+                  String[] markers = {
+                      "search",
+                      "सर्च",
+                      "खोज",
+                      "ढूंढ"
+                  };
+
+                  for (String marker : markers) {
+
+                      int index = q.indexOf(marker);
+
+                      if (index >= 0) {
+
+                          String result =
+                              q.substring(index + marker.length())
+                               .trim();
+
+                          result = result
+                              .replace("on youtube", "")
+                              .replace("youtube par", "")
+                              .replace("youtube pe", "")
+                              .replace("यूट्यूब पर", "")
+                              .replace("यूट्यूब पे", "")
+                              .trim();
+
+                          return result;
+                      }
+                  }
+
+                  return "";
               }
 
               private void say(String text) {
 
                   if (tts != null) {
-
                       tts.speak(
                           text,
                           TextToSpeech.QUEUE_FLUSH,
@@ -350,8 +510,7 @@ jobs:
 
           public class FridayVoiceService extends Service {
 
-              private static final String CHANNEL =
-                  "friday_voice";
+              private static final String CHANNEL = "friday_voice";
 
               @Override
               public void onCreate() {
@@ -375,15 +534,9 @@ jobs:
                   Notification.Builder builder;
 
                   if (Build.VERSION.SDK_INT >= 26) {
-
                       builder =
-                          new Notification.Builder(
-                              this,
-                              CHANNEL
-                          );
-
+                          new Notification.Builder(this, CHANNEL);
                   } else {
-
                       builder =
                           new Notification.Builder(this);
                   }
@@ -397,10 +550,7 @@ jobs:
                           android.R.drawable.ic_btn_speak_now
                       );
 
-                  startForeground(
-                      77,
-                      builder.build()
-                  );
+                  startForeground(77, builder.build());
               }
 
               @Override
@@ -414,8 +564,52 @@ jobs:
 
               @Override
               public IBinder onBind(Intent intent) {
-
                   return null;
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/friday/FridayAccessibilityService.java <<'EOF'
+          package com.example.friday;
+
+          import android.accessibilityservice.AccessibilityService;
+          import android.view.accessibility.AccessibilityEvent;
+          import android.view.accessibility.AccessibilityNodeInfo;
+
+          public class FridayAccessibilityService
+                  extends AccessibilityService {
+
+              @Override
+              public void onAccessibilityEvent(
+                      AccessibilityEvent event) {
+                  // Foundation for user-approved UI automation.
+              }
+
+              @Override
+              public void onInterrupt() {
+                  // Accessibility interruption.
+              }
+
+              public boolean pressBack() {
+                  return performGlobalAction(
+                      GLOBAL_ACTION_BACK
+                  );
+              }
+
+              public boolean pressHome() {
+                  return performGlobalAction(
+                      GLOBAL_ACTION_HOME
+                  );
+              }
+
+              public boolean openRecentApps() {
+                  return performGlobalAction(
+                      GLOBAL_ACTION_RECENTS
+                  );
+              }
+
+              public AccessibilityNodeInfo getCurrentRoot() {
+                  return getRootInActiveWindow();
               }
           }
           EOF
@@ -426,5 +620,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FRIDAY-v2-apk
+          name: FRIDAY-V3-apk
           path: app/build/outputs/apk/debug/app-debug.apk
