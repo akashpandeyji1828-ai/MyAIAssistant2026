@@ -1,4 +1,4 @@
-name: Build My AI Assistant
+name: Build FRIDAY V2
 
 on:
   workflow_dispatch:
@@ -25,10 +25,10 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Create Android project
+      - name: Create FRIDAY project
         shell: bash
         run: |
-          mkdir -p app/src/main/java/com/example/myaiassistant
+          mkdir -p app/src/main/java/com/example/friday
 
           cat > settings.gradle.kts <<'EOF'
           pluginManagement {
@@ -47,7 +47,7 @@ jobs:
               }
           }
 
-          rootProject.name = "MyAIAssistant2026"
+          rootProject.name = "FRIDAY_V2"
           include(":app")
           EOF
 
@@ -63,15 +63,15 @@ jobs:
           }
 
           android {
-              namespace = "com.example.myaiassistant"
+              namespace = "com.example.friday"
               compileSdk = 35
 
               defaultConfig {
-                  applicationId = "com.example.myaiassistant"
+                  applicationId = "com.example.friday"
                   minSdk = 26
                   targetSdk = 35
-                  versionCode = 2
-                  versionName = "1.1"
+                  versionCode = 3
+                  versionName = "2.0"
               }
           }
           EOF
@@ -79,12 +79,15 @@ jobs:
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-              <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 
               <application
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:label="My AI Assistant"
+                  android:theme="@android:style/Theme.Material.NoActionBar"
+                  android:label="FRIDAY"
                   android:allowBackup="false"
                   android:supportsRtl="true">
 
@@ -98,87 +101,116 @@ jobs:
                       </intent-filter>
 
                   </activity>
+
+                  <service
+                      android:name=".FridayVoiceService"
+                      android:foregroundServiceType="microphone"
+                      android:exported="false"/>
+
               </application>
 
           </manifest>
           EOF
 
-          cat > app/src/main/java/com/example/myaiassistant/MainActivity.java <<'EOF'
-          package com.example.myaiassistant;
+          cat > app/src/main/java/com/example/friday/MainActivity.java <<'EOF'
+          package com.example.friday;
 
+          import android.Manifest;
           import android.app.Activity;
-          import android.os.Bundle;
           import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.os.Bundle;
           import android.speech.RecognizerIntent;
+          import android.speech.tts.TextToSpeech;
+          import android.view.Gravity;
           import android.widget.*;
+
           import java.util.ArrayList;
           import java.util.Locale;
 
           public class MainActivity extends Activity {
 
-              TextView chat;
-              EditText input;
+              private TextToSpeech tts;
+              private TextView status;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
 
-                  LinearLayout layout = new LinearLayout(this);
-                  layout.setOrientation(LinearLayout.VERTICAL);
-                  layout.setPadding(32, 32, 32, 24);
+                  if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                      checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                      != PackageManager.PERMISSION_GRANTED) {
+
+                      requestPermissions(
+                          new String[]{Manifest.permission.RECORD_AUDIO},
+                          10
+                      );
+                  }
+
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setGravity(Gravity.CENTER);
+                  root.setPadding(32, 32, 32, 32);
 
                   TextView title = new TextView(this);
-                  title.setText("My AI Assistant");
-                  title.setTextSize(26);
+                  title.setText("FRIDAY");
+                  title.setTextSize(36);
+                  title.setGravity(Gravity.CENTER);
 
-                  chat = new TextView(this);
-                  chat.setText("Namaste! Main tumhara AI Assistant hoon.");
-                  chat.setTextSize(17);
+                  TextView core = new TextView(this);
+                  core.setText("◉\n\nAI CORE");
+                  core.setTextSize(25);
+                  core.setGravity(Gravity.CENTER);
 
-                  ScrollView scroll = new ScrollView(this);
-                  scroll.addView(chat);
+                  status = new TextView(this);
+                  status.setText("SYSTEM READY");
+                  status.setTextSize(18);
+                  status.setGravity(Gravity.CENTER);
+                  status.setPadding(0, 25, 0, 25);
 
-                  input = new EditText(this);
-                  input.setHint("Ask me anything...");
+                  Button speak = new Button(this);
+                  speak.setText("🎙️ SPEAK TO FRIDAY");
 
-                  LinearLayout row = new LinearLayout(this);
+                  Button activate = new Button(this);
+                  activate.setText("ACTIVATE VOICE SERVICE");
 
-                  Button send = new Button(this);
-                  send.setText("Send");
+                  root.addView(title);
+                  root.addView(core);
+                  root.addView(status);
+                  root.addView(speak);
+                  root.addView(activate);
 
-                  Button voice = new Button(this);
-                  voice.setText("Voice");
+                  setContentView(root);
 
-                  row.addView(send,
-                      new LinearLayout.LayoutParams(0, -2, 1));
+                  tts = new TextToSpeech(this, result -> {
+                      if (result == TextToSpeech.SUCCESS) {
+                          tts.setLanguage(Locale.getDefault());
+                      }
+                  });
 
-                  row.addView(voice,
-                      new LinearLayout.LayoutParams(0, -2, 1));
+                  speak.setOnClickListener(v -> listen());
 
-                  layout.addView(title);
+                  activate.setOnClickListener(v -> {
 
-                  layout.addView(
-                      scroll,
-                      new LinearLayout.LayoutParams(-1, 0, 1)
-                  );
+                      Intent service =
+                          new Intent(this, FridayVoiceService.class);
 
-                  layout.addView(input);
-                  layout.addView(row);
+                      if (android.os.Build.VERSION.SDK_INT >= 26) {
+                          startForegroundService(service);
+                      } else {
+                          startService(service);
+                      }
 
-                  setContentView(layout);
+                      status.setText("VOICE SERVICE • ACTIVE");
 
-                  send.setOnClickListener(v ->
-                      respond(input.getText().toString())
-                  );
-
-                  voice.setOnClickListener(v -> startVoiceInput());
+                      say("Yes, I'm listening.");
+                  });
               }
 
-              private void startVoiceInput() {
+              private void listen() {
 
-                  Intent intent = new Intent(
-                      RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-                  );
+                  Intent intent =
+                      new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
 
                   intent.putExtra(
                       RecognizerIntent.EXTRA_LANGUAGE_MODEL,
@@ -187,7 +219,7 @@ jobs:
 
                   intent.putExtra(
                       RecognizerIntent.EXTRA_LANGUAGE,
-                      Locale.getDefault()
+                      "hi-IN"
                   );
 
                   startActivityForResult(intent, 100);
@@ -214,63 +246,176 @@ jobs:
                               RecognizerIntent.EXTRA_RESULTS
                           );
 
-                      if (results != null && !results.isEmpty()) {
+                      if (results != null &&
+                          !results.isEmpty()) {
 
-                          String text = results.get(0);
-
-                          input.setText(text);
-
-                          respond(text);
+                          handleCommand(results.get(0));
                       }
                   }
               }
 
-              private void respond(String question) {
+              private void handleCommand(String command) {
 
-                  String q = question.trim();
+                  String q =
+                      command.toLowerCase(Locale.ROOT);
 
-                  if (q.isEmpty()) {
-                      return;
-                  }
+                  status.setText(
+                      "COMMAND:\n" + command
+                  );
 
-                  String answer;
+                  if (q.contains("youtube")) {
 
-                  String lower = q.toLowerCase();
+                      say("Opening YouTube.");
 
-                  if (lower.contains("hello") ||
-                      lower.contains("hi")) {
+                      Intent app =
+                          getPackageManager()
+                          .getLaunchIntentForPackage(
+                              "com.google.android.youtube"
+                          );
 
-                      answer = "Hello! Main ready hoon.";
+                      if (app != null) {
+                          startActivity(app);
+                      }
 
-                  } else if (lower.contains("ai")) {
+                  } else if (
+                      q.contains("calculator") ||
+                      q.contains("कैलकुलेटर")) {
 
-                      answer =
-                          "AI learning: Python -> APIs -> LLMs -> AI Agents.";
+                      say("Opening calculator.");
 
-                  } else if (lower.contains("earning")) {
+                      Intent calculator =
+                          new Intent(
+                              "android.intent.action.MAIN"
+                          );
 
-                      answer =
-                          "Main legitimate online earning opportunities samajhne me help karunga.";
+                      calculator.addCategory(
+                          "android.intent.category.APP_CALCULATOR"
+                      );
 
-                  } else if (lower.contains("help")) {
+                      try {
+                          startActivity(calculator);
+                      } catch (Exception ignored) {}
 
-                      answer =
-                          "Main AI learning, earning ideas aur basic tasks me help kar sakta hoon.";
+                  } else if (
+                      q.contains("hello") ||
+                      q.contains("hi") ||
+                      q.contains("हेलो")) {
+
+                      say("Hello. FRIDAY is ready.");
 
                   } else {
 
-                      answer =
-                          "Tumne kaha: " + q +
-                          "\\n\\nYe My AI Assistant ka V1 demo response hai.";
+                      say(
+                          "I heard you. " +
+                          "Advanced FRIDAY controls will be added."
+                      );
+                  }
+              }
+
+              private void say(String text) {
+
+                  if (tts != null) {
+
+                      tts.speak(
+                          text,
+                          TextToSpeech.QUEUE_FLUSH,
+                          null,
+                          "friday"
+                      );
+                  }
+              }
+
+              @Override
+              protected void onDestroy() {
+
+                  if (tts != null) {
+                      tts.shutdown();
                   }
 
-                  chat.setText(
-                      chat.getText() +
-                      "\\n\\nYou: " + q +
-                      "\\nAssistant: " + answer
-                  );
+                  super.onDestroy();
+              }
+          }
+          EOF
 
-                  input.setText("");
+          cat > app/src/main/java/com/example/friday/FridayVoiceService.java <<'EOF'
+          package com.example.friday;
+
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.Service;
+          import android.content.Intent;
+          import android.os.Build;
+          import android.os.IBinder;
+
+          public class FridayVoiceService extends Service {
+
+              private static final String CHANNEL =
+                  "friday_voice";
+
+              @Override
+              public void onCreate() {
+
+                  super.onCreate();
+
+                  if (Build.VERSION.SDK_INT >= 26) {
+
+                      NotificationChannel channel =
+                          new NotificationChannel(
+                              CHANNEL,
+                              "FRIDAY Voice",
+                              NotificationManager.IMPORTANCE_LOW
+                          );
+
+                      getSystemService(
+                          NotificationManager.class
+                      ).createNotificationChannel(channel);
+                  }
+
+                  Notification.Builder builder;
+
+                  if (Build.VERSION.SDK_INT >= 26) {
+
+                      builder =
+                          new Notification.Builder(
+                              this,
+                              CHANNEL
+                          );
+
+                  } else {
+
+                      builder =
+                          new Notification.Builder(this);
+                  }
+
+                  builder
+                      .setContentTitle("FRIDAY")
+                      .setContentText(
+                          "FRIDAY voice service is active"
+                      )
+                      .setSmallIcon(
+                          android.R.drawable.ic_btn_speak_now
+                      );
+
+                  startForeground(
+                      77,
+                      builder.build()
+                  );
+              }
+
+              @Override
+              public int onStartCommand(
+                      Intent intent,
+                      int flags,
+                      int startId) {
+
+                  return START_STICKY;
+              }
+
+              @Override
+              public IBinder onBind(Intent intent) {
+
+                  return null;
               }
           }
           EOF
@@ -281,5 +426,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyAIAssistant-v1.1-apk
+          name: FRIDAY-v2-apk
           path: app/build/outputs/apk/debug/app-debug.apk
